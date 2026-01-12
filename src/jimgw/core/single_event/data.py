@@ -307,7 +307,12 @@ class Data(ABC):
             **kws
         )
         # Extract detector name from channel (e.g., "H1:GDS-CALIB_STRAIN" -> "H1")
-        ifo_name = channel.split(":")[0] if ":" in channel else channel
+        # Handle cases where channel might not have a colon
+        if ":" in channel:
+            ifo_name = channel.split(":")[0]
+        else:
+            # If no colon, use the first part before any underscore or dash
+            ifo_name = channel.split("_")[0].split("-")[0]
         return cls(data_td.value, data_td.dt.value, data_td.epoch.value, ifo_name)  # type: ignore # noqa: E501
 
     @classmethod

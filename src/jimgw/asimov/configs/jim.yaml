@@ -40,11 +40,13 @@ data_files:
   {{ ifo }}: {{ data['data files'][ifo] }}
 {%- endfor %}
 
+{%- if data contains "channels" %}
 # Channel names for frame files
 channels:
 {%- for ifo in ifos %}
   {{ ifo }}: {{ data['channels'][ifo] }}
 {%- endfor %}
+{%- endif %}
 {%- endif %}
 {%- endif %}
 
