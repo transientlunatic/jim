@@ -17,6 +17,13 @@ except ImportError:
         "Install it with: pip install asimov"
     )
 
+# Check if this is asimov v0.7+ with prior interface support
+try:
+    from asimov.priors import PriorInterface
+    ASIMOV_V07_SUPPORT = True
+except ImportError:
+    ASIMOV_V07_SUPPORT = False
+
 
 class Jim(Pipeline):
     """
@@ -46,6 +53,10 @@ class Jim(Pipeline):
 
         if not production.pipeline.lower() == "jim":
             raise PipelineException("Pipeline mismatch")
+        
+        # Initialize prior interface for v0.7+ compatibility
+        if ASIMOV_V07_SUPPORT and hasattr(self, '_prior_interface'):
+            self._prior_interface = None
 
     def detect_completion(self):
         """
@@ -448,6 +459,36 @@ request_cpus = 4
         """
         self.logger.info("Jim job has completed.")
         self.production.status = "finished"
+    
+    def get_prior_interface(self):
+        """
+        Get the prior interface for jim pipeline (v0.7+ compatibility).
+        
+        This provides compatibility with asimov v0.7 and later which support
+        standardized prior interfaces.
+        
+        Returns
+        -------
+        PriorInterface or None
+            The prior interface if asimov v0.7+ is installed, None otherwise
+        """
+        if not ASIMOV_V07_SUPPORT:
+            return None
+        
+        if self._prior_interface is None:
+            # Create a basic prior interface for jim
+            # Jim uses YAML configuration files, so we can provide
+            # a simple wrapper that extracts prior information
+            try:
+                from asimov.priors import PriorInterface
+                priors = getattr(self.production, 'priors', None)
+                if priors:
+                    self._prior_interface = PriorInterface(priors)
+            except Exception as e:
+                self.logger.warning(f"Could not create prior interface: {e}")
+                return None
+        
+        return self._prior_interface
 
     def clean(self, dryrun=False):
         """

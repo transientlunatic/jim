@@ -2,6 +2,14 @@
 
 This directory contains the asimov pipeline interface for jim, allowing automated gravitational-wave parameter estimation workflows.
 
+## Compatibility
+
+The jim asimov interface is compatible with:
+- **asimov master branch** (v0.6.x and earlier)
+- **asimov v0.7-preview** and later versions
+
+The interface automatically detects the asimov version and provides appropriate compatibility features.
+
 ## Installation
 
 To use the asimov interface, install jim with the asimov extra:
