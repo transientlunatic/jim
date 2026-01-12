@@ -273,6 +273,44 @@ class Data(ABC):
         return cls(data_td.value, data_td.dt.value, data_td.epoch.value, ifo)  # type: ignore # noqa: E501
 
     @classmethod
+    def from_gwf(
+        cls,
+        gwf_file: str,
+        channel: str,
+        gps_start_time: Float,
+        gps_end_time: Float,
+        **kws,
+    ) -> Self:
+        """Load data from a GWF (Gravitational Wave Frame) file.
+
+        Args:
+            gwf_file: Path to the GWF file or frame cache file.
+            channel: Channel name to read from the frame file.
+            gps_start_time: GPS start time of the data to read.
+            gps_end_time: GPS end time of the data to read.
+            **kws: Keyword arguments for `gwpy.timeseries.TimeSeries.read`.
+
+        Returns:
+            Data: Data object with the time domain data from the frame file.
+        """
+        duration = gps_end_time - gps_start_time
+        logger.info(
+            f"Reading {duration} s of {channel} data from {gwf_file} "
+            f"[{gps_start_time}, {gps_end_time}]"
+        )
+
+        data_td = TimeSeries.read(
+            gwf_file, 
+            channel, 
+            start=gps_start_time, 
+            end=gps_end_time,
+            **kws
+        )
+        # Extract detector name from channel (e.g., "H1:GDS-CALIB_STRAIN" -> "H1")
+        ifo_name = channel.split(":")[0] if ":" in channel else channel
+        return cls(data_td.value, data_td.dt.value, data_td.epoch.value, ifo_name)  # type: ignore # noqa: E501
+
+    @classmethod
     def from_fd(
         cls,
         fd_strain: Complex[Array, " n_freq"],

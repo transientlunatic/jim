@@ -9,6 +9,7 @@ import yaml
 
 try:
     from asimov.pipeline import Pipeline, PipelineException, PipelineLogger
+    from liquidpy import Liquid
 except ImportError:
     raise ImportError(
         "asimov is required to use the jim asimov interface. "
@@ -96,18 +97,18 @@ class Jim(Pipeline):
 
     def build_dag(self, psds=None, data_files=None, user=None, dryrun=False):
         """
-        Construct configuration and submission script for jim.
+        Construct configuration and submission script for jim using liquid templating.
 
         Parameters
         ----------
         psds : dict, optional
             Dictionary mapping detector names to PSD file paths.
             If provided, these PSDs from previous analyses will be used.
-            Example: {"H1": "/path/to/H1_psd.npz", "L1": "/path/to/L1_psd.npz"}
+            Example: {"H1": "/path/to/H1_psd.dat", "L1": "/path/to/L1_psd.dat"}
         data_files : dict, optional
-            Dictionary mapping detector names to frame/data file paths.
-            If provided, these data files from previous analyses will be used.
-            Example: {"H1": "/path/to/H1_data.npz", "L1": "/path/to/L1_data.npz"}
+            Dictionary mapping detector names to GWF frame file paths.
+            If provided, these frame files from previous analyses will be used.
+            Example: {"H1": "/path/to/H1.gwf", "L1": "/path/to/L1.gwf"}
         user : str, optional
             The user accounting tag which should be used to run the job.
         dryrun : bool, optional
@@ -121,21 +122,6 @@ class Jim(Pipeline):
         """
         cwd = os.getcwd()
         self.logger.info(f"Working in {cwd}")
-
-        # Get the configuration file
-        if self.production.event.repository:
-            config_file = self.production.event.repository.find_prods(
-                self.production.name, self.category
-            )[0]
-            config_file = os.path.join(cwd, config_file)
-        else:
-            config_file = f"{self.production.name}.yaml"
-
-        if not os.path.exists(config_file):
-            raise PipelineException(
-                f"Configuration file not found: {config_file}",
-                production=self.production.name,
-            )
 
         # Set up run directory
         if self.production.rundir:
@@ -152,63 +138,58 @@ class Jim(Pipeline):
         results_dir = os.path.join(rundir, "results")
         os.makedirs(results_dir, exist_ok=True)
 
-        # Load the configuration
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
-
-        # Update configuration with PSDs if provided
+        # Add PSDs to production meta if provided via arguments
+        # This allows liquid template to access them via production._previous_assets()
         if psds is not None:
             self.logger.info(f"Using external PSDs: {psds}")
-            # Create a data directory for PSDs
-            psd_dir = os.path.join(rundir, "psds")
-            os.makedirs(psd_dir, exist_ok=True)
-            
-            # Copy PSD files to rundir and update config
-            config["psd_files"] = {}
-            for ifo, psd_path in psds.items():
-                if os.path.exists(psd_path):
-                    dest_path = os.path.join(psd_dir, f"{ifo}_psd.npz")
-                    if not dryrun:
-                        shutil.copy(psd_path, dest_path)
-                    config["psd_files"][ifo] = dest_path
-                    self.logger.info(f"Copied PSD for {ifo} to {dest_path}")
-                else:
-                    self.logger.warning(f"PSD file not found: {psd_path}")
+            if not hasattr(self.production, '_assets'):
+                self.production._assets = {}
+            self.production._assets['psds'] = psds
 
-        # Update configuration with data files if provided
+        # Add data files to production meta if provided via arguments
         if data_files is not None:
             self.logger.info(f"Using external data files: {data_files}")
-            # Create a data directory
-            data_dir = os.path.join(rundir, "data")
-            os.makedirs(data_dir, exist_ok=True)
-            
-            # Copy data files to rundir and update config
-            config["data_files"] = {}
-            for ifo, data_path in data_files.items():
-                if os.path.exists(data_path):
-                    dest_path = os.path.join(data_dir, f"{ifo}_data.npz")
-                    if not dryrun:
-                        shutil.copy(data_path, dest_path)
-                    config["data_files"][ifo] = dest_path
-                    self.logger.info(f"Copied data for {ifo} to {dest_path}")
-                else:
-                    self.logger.warning(f"Data file not found: {data_path}")
+            if 'data' not in self.production.meta:
+                self.production.meta['data'] = {}
+            self.production.meta['data']['data files'] = data_files
 
-        # Update working directory in config
-        config["working_dir"] = results_dir
+        # Load the liquid template
+        template_path = os.path.join(
+            os.path.dirname(__file__), 
+            "configs", 
+            "jim.yaml"
+        )
+        
+        if not os.path.exists(template_path):
+            raise PipelineException(
+                f"Template file not found: {template_path}",
+                production=self.production.name,
+            )
 
-        # Write the updated configuration
+        with open(template_path, "r") as f:
+            template_content = f.read()
+
+        # Render the template using liquidpy
+        try:
+            liq = Liquid(template_content, liquid_filters={})
+            config_content = liq.render(production=self.production)
+        except Exception as e:
+            raise PipelineException(
+                f"Failed to render template: {e}",
+                production=self.production.name,
+            )
+
+        # Write the rendered configuration
         updated_config_file = os.path.join(rundir, "config.yaml")
         if not dryrun:
             with open(updated_config_file, "w") as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-            self.logger.info(f"Updated configuration written to {updated_config_file}")
+                f.write(config_content)
+            self.logger.info(f"Configuration written to {updated_config_file}")
 
-        # Create a submission script
-        submit_script = os.path.join(rundir, "submit.sh")
-        
         # Create a separate Python script for execution
         run_script = os.path.join(rundir, "run_jim.py")
+        submit_script = os.path.join(rundir, "submit.sh")
+        
         run_script_content = f"""#!/usr/bin/env python
 \"\"\"Jim analysis execution script - generated by asimov\"\"\"
 

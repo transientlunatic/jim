@@ -46,6 +46,7 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
     dec_range: tuple[float, float]
     psd_files: Optional[dict[str, str]] = None
     data_files: Optional[dict[str, str]] = None
+    channels: Optional[dict[str, str]] = None
 
     @property
     def n_dims(self):
@@ -66,6 +67,7 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
         dec_range: tuple[float, float],
         psd_files: Optional[dict[str, str]] = None,
         data_files: Optional[dict[str, str]] = None,
+        channels: Optional[dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -83,6 +85,7 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
         self.dec_range = dec_range
         self.psd_files = psd_files
         self.data_files = data_files
+        self.channels = channels
 
     def initialize_jim_objects(self):
         self.likelihood = self.initialize_likelihood(
@@ -112,8 +115,22 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
                 
                 # Load data
                 if self.data_files and ifo.name in self.data_files:
-                    logger.info(f"Loading data for {ifo.name} from {self.data_files[ifo.name]}")
-                    ifo_data = Data.from_file(self.data_files[ifo.name])
+                    data_file = self.data_files[ifo.name]
+                    logger.info(f"Loading data for {ifo.name} from {data_file}")
+                    
+                    # Check if it's a GWF file
+                    if data_file.endswith('.gwf') or data_file.endswith('.lcf'):
+                        # Need channel information for GWF files
+                        if not self.channels or ifo.name not in self.channels:
+                            raise ValueError(
+                                f"Channel information required for GWF file {data_file}. "
+                                f"Please provide channels dict with key '{ifo.name}'"
+                            )
+                        channel = self.channels[ifo.name]
+                        ifo_data = Data.from_gwf(data_file, channel, start, end)
+                    else:
+                        # Assume it's an NPZ file
+                        ifo_data = Data.from_file(data_file)
                 else:
                     logger.info(f"Fetching data for {ifo.name} from GWOSC")
                     ifo_data = Data.from_gwosc(ifo.name, start, end)
@@ -332,6 +349,8 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
             run_dict["psd_files"] = self.psd_files
         if self.data_files is not None:
             run_dict["data_files"] = self.data_files
+        if self.channels is not None:
+            run_dict["channels"] = self.channels
         with open(path, "w") as f:
             yaml.dump(run_dict, f, default_flow_style=False, sort_keys=False)
         logger.info(f"Run serialized to {path}")
@@ -365,6 +384,7 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
             dec_range=tuple(run_dict["dec_range"]),
             psd_files=run_dict.get("psd_files"),
             data_files=run_dict.get("data_files"),
+            channels=run_dict.get("channels"),
         )
         run.load_flowMC_params(run_dict)
         run.load_single_event_params(run_dict)

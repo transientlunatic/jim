@@ -22,8 +22,9 @@ pip install jimgw[asimov]
 
 The jim asimov interface supports:
 
-- **External PSDs**: Use PSDs from previous analyses instead of estimating from data
-- **External Data Files**: Use frame files or data from previous analyses
+- **External PSDs**: Use PSDs from previous analyses instead of estimating from data  
+- **GWF Frame Files**: Read gravitational wave data from standard GWF (Gravitational Wave Frame) files
+- **Liquid Templating**: Configuration generated via liquid templates (like bilby pipeline)
 - **Flexible Configuration**: YAML-based configuration compatible with asimov workflows
 - **Cluster Integration**: Submit jobs to HTCondor clusters via asimov
 
@@ -38,11 +39,9 @@ cd my-analysis
 asimov init "My Analysis"
 ```
 
-2. Create a jim configuration file (see `example/asimov_example_config.yaml` for a template)
+2. Configure your production in asimov's ledger with the required metadata
 
-3. Add the configuration to asimov's ledger
-
-4. Build and submit the job:
+3. Build and submit the job:
 ```bash
 asimov manage build
 asimov manage submit
@@ -50,34 +49,47 @@ asimov manage submit
 
 ### Using External PSDs
 
-To use PSDs from a previous analysis, add the `psd_files` section to your configuration:
+PSDs from previous analyses can be provided via asimov's production metadata or through the `psds` argument to `build_dag()`:
 
-```yaml
-psd_files:
-  H1: /path/to/previous_analysis/H1_psd.npz
-  L1: /path/to/previous_analysis/L1_psd.npz
+```python
+pipeline.build_dag(psds={
+    'H1': '/path/to/H1_psd.dat',
+    'L1': '/path/to/L1_psd.dat'
+})
 ```
 
-The PSD files should be in the format produced by `PowerSpectrum.to_file()`, which is a `.npz` file containing:
+The PSD files should be in NPZ format produced by `PowerSpectrum.to_file()`, containing:
 - `values`: PSD values
 - `frequencies`: Corresponding frequencies
 - `name`: Detector name
 
-### Using External Data Files
+### Using GWF Frame Files
 
-To use data from a previous analysis, add the `data_files` section to your configuration:
+Jim now supports reading data from standard GWF (Gravitational Wave Frame) files, which is the standard format for gravitational wave data:
 
 ```yaml
 data_files:
-  H1: /path/to/previous_analysis/H1_data.npz
-  L1: /path/to/previous_analysis/L1_data.npz
+  H1: /path/to/H1_frame_cache.gwf
+  L1: /path/to/L1_frame_cache.gwf
+
+# Channel names are required for GWF files
+channels:
+  H1: H1:GDS-CALIB_STRAIN
+  L1: L1:GDS-CALIB_STRAIN
 ```
 
-The data files should be in the format produced by `Data.to_file()`, which is a `.npz` file containing:
-- `td`: Time-domain data
-- `dt`: Time step
-- `epoch`: GPS epoch
-- `name`: Detector name
+You can also provide frame files via the `data_files` argument to `build_dag()`:
+
+```python
+pipeline.build_dag(
+    data_files={
+        'H1': '/path/to/H1.gwf',
+        'L1': '/path/to/L1.gwf'
+    }
+)
+```
+
+The jim pipeline will automatically detect GWF files (by `.gwf` or `.lcf` extension) and read them using gwpy's `TimeSeries.read()` method.
 
 ### Programmatic Use
 
