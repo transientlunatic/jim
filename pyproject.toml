@@ -49,6 +49,9 @@ dagster = [
     "dagster-pipes>=1.11.1",
     "dagster-webserver>=1.11.1",
 ]
+asimov = [
+    "asimov>=0.6.0",
+]
 
 [dependency-groups]
 dev = [
@@ -64,6 +67,9 @@ dev = [
 
 [tool.uv.sources]
 jimgw = { workspace = true }
+
+[project.entry-points."asimov.pipelines"]
+jim = "jimgw.asimov:Jim"
 
 [tool.dagster]
 modules = [

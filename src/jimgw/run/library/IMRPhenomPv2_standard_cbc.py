@@ -44,6 +44,8 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
     psi_range: tuple[float, float]
     ra_range: tuple[float, float]
     dec_range: tuple[float, float]
+    psd_files: Optional[dict[str, str]] = None
+    data_files: Optional[dict[str, str]] = None
 
     @property
     def n_dims(self):
@@ -62,6 +64,8 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
         psi_range: tuple[float, float],
         ra_range: tuple[float, float],
         dec_range: tuple[float, float],
+        psd_files: Optional[dict[str, str]] = None,
+        data_files: Optional[dict[str, str]] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -77,6 +81,8 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
         self.psi_range = psi_range
         self.ra_range = ra_range
         self.dec_range = dec_range
+        self.psd_files = psd_files
+        self.data_files = data_files
 
     def initialize_jim_objects(self):
         self.likelihood = self.initialize_likelihood(
@@ -95,7 +101,38 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
         start = gps - (self.segment_length - self.post_trigger_length)
         end = gps + self.post_trigger_length
 
-        if self.local_data_prefix is None:
+        # Priority order: psd_files/data_files > local_data_prefix > GWOSC
+        if self.psd_files is not None or self.data_files is not None:
+            logger.info("Using PSD and/or data files from configuration.")
+            for ifo in self.ifos:
+                if ifo.name not in [
+                    detector.name for detector in list(get_detector_preset().values())
+                ]:
+                    raise ValueError(f"Invalid detector: {ifo}")
+                
+                # Load data
+                if self.data_files and ifo.name in self.data_files:
+                    logger.info(f"Loading data for {ifo.name} from {self.data_files[ifo.name]}")
+                    ifo_data = Data.from_file(self.data_files[ifo.name])
+                else:
+                    logger.info(f"Fetching data for {ifo.name} from GWOSC")
+                    ifo_data = Data.from_gwosc(ifo.name, start, end)
+                ifo.set_data(ifo_data)
+                
+                # Load PSD
+                if self.psd_files and ifo.name in self.psd_files:
+                    logger.info(f"Loading PSD for {ifo.name} from {self.psd_files[ifo.name]}")
+                    ifo_psd = PowerSpectrum.from_file(self.psd_files[ifo.name])
+                else:
+                    logger.info(f"Estimating PSD for {ifo.name} from GWOSC data")
+                    psd_start = gps - 2048
+                    psd_end = gps + 2048
+                    ifo_psd_data = Data.from_gwosc(ifo.name, psd_start, psd_end)
+                    psd_fftlength = ifo_data.duration * ifo_data.sampling_frequency
+                    ifo_psd = ifo_psd_data.to_psd(nperseg=psd_fftlength)
+                ifo.set_psd(ifo_psd)
+                
+        elif self.local_data_prefix is None:
             logger.info("No local data provided, using GWOSC data.")
             psd_start = gps - 2048
             psd_end = gps + 2048
@@ -111,7 +148,7 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
                 ifo.set_psd(ifo_psd.to_psd(nperseg=psd_fftlength))
         else:
             logger.info(f"Using local data from {local_data_prefix}.")
-            # TODO: Load local data from a file, and the PSD correspondingly.
+            # Load local data from a file, and the PSD correspondingly.
             for ifo in self.ifos:
                 if ifo.name not in [
                     detector.name for detector in list(get_detector_preset().values())
@@ -291,6 +328,10 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
                 "dec_range": list(self.dec_range),
             }
         )
+        if self.psd_files is not None:
+            run_dict["psd_files"] = self.psd_files
+        if self.data_files is not None:
+            run_dict["data_files"] = self.data_files
         with open(path, "w") as f:
             yaml.dump(run_dict, f, default_flow_style=False, sort_keys=False)
         logger.info(f"Run serialized to {path}")
@@ -322,6 +363,8 @@ class IMRPhenomPv2StandardCBCRunDefinition(SingleEventRunDefinition):
             psi_range=tuple(run_dict["psi_range"]),
             ra_range=tuple(run_dict["ra_range"]),
             dec_range=tuple(run_dict["dec_range"]),
+            psd_files=run_dict.get("psd_files"),
+            data_files=run_dict.get("data_files"),
         )
         run.load_flowMC_params(run_dict)
         run.load_single_event_params(run_dict)
