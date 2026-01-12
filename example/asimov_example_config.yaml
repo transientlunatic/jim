@@ -1,0 +1,93 @@
+# Example jim configuration for asimov
+# This demonstrates how to use PSDs and GWF frame files from previous analyses
+
+# Event parameters
+gps: 1126259462.4
+segment_length: 4.0
+post_trigger_length: 2.0
+
+# Frequency settings
+f_min: 20.0
+f_max: 1024.0
+f_ref: 20.0
+
+# Detectors
+ifos:
+  - H1
+  - L1
+
+# Optional: Provide PSDs from previous analyses (NPZ format)
+# If not provided, PSDs will be estimated from GWOSC data
+# psd_files:
+#   H1: /path/to/previous_analysis/H1_psd.npz
+#   L1: /path/to/previous_analysis/L1_psd.npz
+
+# Optional: Provide GWF frame files from previous analyses
+# If not provided, data will be fetched from GWOSC
+# data_files:
+#   H1: /path/to/frame_cache/H1_data.gwf
+#   L1: /path/to/frame_cache/L1_data.gwf
+#
+# # Channel names are required for GWF files
+# channels:
+#   H1: H1:GDS-CALIB_STRAIN
+#   L1: L1:GDS-CALIB_STRAIN
+
+# Sampler settings
+seed: 0
+n_chains: 500
+n_local_steps: 100
+n_global_steps: 1000
+n_training_loops: 20
+n_production_loops: 10
+n_epochs: 20
+mala_step_size: 0.002
+rq_spline_hidden_units:
+  - 128
+  - 128
+rq_spline_n_bins: 10
+rq_spline_n_layers: 8
+learning_rate: 0.001
+batch_size: 10000
+n_max_examples: 30000
+n_NFproposal_batch_size: 100
+local_thinning: 1
+global_thinning: 100
+history_window: 200
+n_temperatures: 0
+max_temperature: 20.0
+n_tempered_steps: 10
+
+# Run definition
+definition_name: IMRPhenomPv2StandardCBC
+
+# Prior ranges
+M_c_range:
+  - 10.0
+  - 80.0
+q_range:
+  - 0.125
+  - 1.0
+max_s1: 0.99
+max_s2: 0.99
+iota_range:
+  - 0.0
+  - 3.141592653589793
+dL_range:
+  - 1.0
+  - 2000.0
+t_c_range:
+  - -0.05
+  - 0.05
+phase_c_range:
+  - 0.0
+  - 6.283185307179586
+psi_range:
+  - 0.0
+  - 3.141592653589793
+ra_range:
+  - 0.0
+  - 6.283185307179586
+dec_range:
+  - -1.5707963267948966
+  - 1.5707963267948966
